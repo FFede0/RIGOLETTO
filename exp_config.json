@@ -1,0 +1,10 @@
+{
+  "algorithm": "DQN",
+  "env_config_file": "env_config.json",
+  "ray_config_file": "ray_config.json",
+  "tune_config_file": "tune_config.json",
+  "evaluation_interval": 5,
+  "stopping_criteria": {
+    "max_iterations": 10000
+  }
+}
