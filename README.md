@@ -1,9 +1,10 @@
 # RIGOLETTO
+
 Reinforcement learninG fOr decentraLizEd Topology-aware saTellite rOuting
 
-## Custom environment for RL4CC library implementation for routing on satellite networks
+### Custom environment for RL4CC library implementation for routing on satellite networks
 
-### Main content & Requirements
+#### Main content & Requirements
 
 This repository provides a custom Reinforcement Learning environment based on [RL4CC](https://github.com/FFede0/RL4CC/tree/main) optimized for satellite network routing, alongside telemetry and validation utilities.
 
@@ -95,7 +96,7 @@ After the execution inside the the `results/` folder there should be a new `DQN_
 
 ---
 
-### Utilities folder
+#### Utilities folder
 
 Inside the utils folder, files are organized into subfolders based on their specific use cases:
 ``` bash
