@@ -56,7 +56,7 @@
     "duration_unit": "episodes"
   },
   "callbacks": {
-    "callbacks_class": "RL4CC.callbacks.sat_callbacks.SatCallbacks"
+    "callbacks_class": "src.sat_callbacks.SatCallbacks"
   },
   "debugging": {
     "log_level": "ERROR",
