@@ -44,6 +44,9 @@ The `sat_callbacks.py` must be referenced in the ray configuration file reportin
 
 To build the Docker image and start a training experiment, use the provided Dockerfile (the `main.py` entrypoint starts immediately the training).
 
+> [!NOTE]
+> Training results are saved in `/app/OUTPUT`; mount the directory as a shared volume to ensure outputs are persisted.
+
 ---
 
 From the simulator two files: `environment.py` and `satellite.py`, have been customized by adding plot and log to better understand its functioning and finally to generate the topology and flows files, furthermore the generation of satellites links was corrected to avoid assigning the same satellite multiple times as a neighbor of a single satellite.
