@@ -19,8 +19,7 @@ RUN pip install torch
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Copia RL4CC, lo script principale ed i file necessari
-COPY RL4CC-main ./RL4CC-main
+# Copia lo script principale ed i file necessari
 COPY main.py .
 COPY exp_config.json .
 COPY env_config.json .
@@ -31,10 +30,6 @@ COPY flows_src__dst_timeline.json .
 COPY flows_eval.json .
 COPY satellite_topology.json .
 COPY dijkstra_results.json .
-
-# Installa RL4CC
-WORKDIR /app/RL4CC-main
-RUN pip install .
 
 WORKDIR /app
 

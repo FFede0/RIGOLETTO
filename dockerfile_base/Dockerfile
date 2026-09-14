@@ -24,7 +24,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 
-# Copia RL4CC, lo script principale ed i file necessari
+# Copia lo script principale ed i file necessari
 COPY main.py .
 COPY exp_config.json .
 COPY env_config.json .
