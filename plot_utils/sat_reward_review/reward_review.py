@@ -77,6 +77,7 @@ class RewardValidator:
 
             # Simula inoltro(salto) da un sat ad un altro del path Dijkstra
             # eg. 4 sat [100,105,109,112], fa 3 inoltri
+            rewards_dict = {"DOrf": [], "PErf": [], "EErf": []}
             for i in range(1, len(path)):
                 prev_id = path[i-1]
                 curr_id = path[i]
@@ -98,6 +99,9 @@ class RewardValidator:
                     # reward = 1 # Reward fisso ad 1
                     #print(f"Reward dest: {reward}") # Debug
                     label = "FINAL(Dest)"
+                    rewards_dict["DOrf"].append(round(1.0, 5))
+                    rewards_dict["PErf"].append(round(reward, 5))
+                    rewards_dict["EErf"].append(round(reward + 0.05, 5))
                 else:
                     # Reward Step
                     neighbors_dict = s_prev["neighbors"]
@@ -124,6 +128,10 @@ class RewardValidator:
                     #reward = 1 # Reward fisso ad 1 (imitation learning forte)
                     label = f"STEP {step_counter}"
 
+                    rewards_dict["DOrf"].append(round(reward - 0.05, 5))
+                    rewards_dict["PErf"].append(round(reward - 0.05, 5))
+                    rewards_dict["EErf"].append(round(reward, 5))
+
                     #print(f"Reward step: {reward}") # Debug
                 
                 total_reward += reward
@@ -135,6 +143,7 @@ class RewardValidator:
             # Creazione riga per report
             route_str = f"{s_id}->{e_id}" # "sat iniziale -> sat finale"
             row = {
+                "function_name": "CHOSEN",
                 "flow_uuid": flow_uuid,  # ID flusso
                 "route": route_str,       
                 "time": t,
@@ -154,6 +163,28 @@ class RewardValidator:
             report_data.append(row)
             all_rewards.append(total_reward)
             all_distances.append(dist_tot)
+
+            for funct_name, rew_list in rewards_dict.items():
+              row = {
+                  "function_name": funct_name,
+                  "flow_uuid": flow_uuid,  # ID flusso
+                  "route": route_str,       
+                  "time": t,
+                  "hops": d_hop,
+                  "total_distance": round(dist_tot, 2),
+                  "total_reward": round(sum(rew_list), 5)
+              }
+              
+              # Aggiunge i singoli salti (fino a MAX_HOPS)
+              for j in range(self.MAX_HOPS):
+                  column_name = f"jump_{j+1}_reward"
+                  if j < len(rew_list):
+                      row[column_name] = rew_list[j]
+                  else:
+                      row[column_name] = None
+
+              report_data.append(row)
+
             # Stampa riassuntiva flusso
             print(f"{'-'*66}")
             print(f"  Result: Tot Distance: {dist_tot:.2f} km | Tot Reward: {total_reward:.5f}\n")
@@ -174,13 +205,12 @@ class RewardValidator:
         print(f"Report saved: {output_path}.csv and {output_path}.json")
 
 # --- ESECUZIONE ---
-validator = RewardValidator(
-    topo_file="satellite_topology.json", 
-    eval_file="flows_eval.json", 
-    dijkstra_file="dijkstra_results.json",
-    w_step=1.0, 
-    w_dest=1.0
-)
-validator.run_validation(output_path="report_reward_jumps")
-time.sleep(5)
-input()
+if __name__ == "__main__":
+  validator = RewardValidator(
+      topo_file="satellite_topology.json", 
+      eval_file="flows_eval.json", 
+      dijkstra_file="dijkstra_results.json",
+      w_step=1.0, 
+      w_dest=1.0
+  )
+  validator.run_validation(output_path="report_reward_jumps")
