@@ -1,14 +1,42 @@
 from matplotlib import colors as mcolors
 import matplotlib.pyplot as plt
 import pandas as pd
+import argparse
+import parse
+import os
 
 
-def load_data() -> pd.DataFrame:
+def parse_arguments() -> argparse.Namespace:
+  """
+  Parse input arguments
+  """
+  parser: argparse.ArgumentParser = argparse.ArgumentParser(
+    description = "Plot training or evaluation results", 
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+  )
+  parser.add_argument(
+    "-i", "--input_files",
+    help = "Input files",
+    nargs = "+",
+    type = str,
+    required = True
+  )
+  parser.add_argument(
+    "-o", "--output_folder",
+    help = "Folder to store plots",
+    type = str,
+    required = True
+  )
+  # Parse the arguments
+  args: argparse.Namespace = parser.parse_known_args()[0]
+  return args
+
+
+def load_data(input_files: list) -> pd.DataFrame:
   data = pd.DataFrame()
-  for rf in [
-      "DOrf", "PErf", "EErf", "2-stages curriculum", "3-stages curriculum"
-    ]:
-    rf_data = pd.read_csv(f"../sat_plot_summary/summaries_csv/{rf}.csv")[[
+  for filename in input_files:
+    _, rf = parse.parse("{}_{}.csv", os.path.basename(filename))
+    rf_data = pd.read_csv(filename)[[
       "iteration", 
       "pct_concluded", 
       "pct_optimal",
@@ -24,10 +52,9 @@ def load_data() -> pd.DataFrame:
 
 
 def load_dijkstra_data() -> pd.DataFrame:
-  dijkstra_data_group = pd.read_csv("report_reward_jumps.csv")[[
-    "function_name",
-    "total_reward"
-  ]].groupby("function_name")
+  dijkstra_data_group = pd.read_csv(
+    "plot_utils/sat_reward_review/report_reward_jumps.csv"
+  )[["function_name","total_reward"]].groupby("function_name")
   dijkstra_data = pd.DataFrame(
     dijkstra_data_group.min()
   ).join(
@@ -42,8 +69,8 @@ def load_dijkstra_data() -> pd.DataFrame:
   return dijkstra_data
 
 
-def main():
-  reward_data = load_data()
+def main(input_files: list, output_folder: str):
+  reward_data = load_data(input_files)
   dijkstra_reward_data = load_dijkstra_data()
   # plot
   _, ax = plt.subplots()
@@ -95,4 +122,7 @@ def main():
 
 
 if __name__ == "__main__":
-  main()
+  args = parse_arguments()
+  input_files = args.input_files
+  output_folder = args.output_folder
+  main(input_files, output_folder)
