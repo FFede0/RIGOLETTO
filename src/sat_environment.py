@@ -81,6 +81,8 @@ class SatEnvironment(BaseEnvironment):
 
         self.phase_changed = False # Flag per il cambio reward (curriculum learning), viene cambiato al raggiungimento della soglia
         self.imit_learning = False # Flag per reward step come dijkstra (imitation learning), cambiare manualmente
+        self.dorf_to_perf_iteration = env_config.get("dorf_to_perf_iteration", 750)
+        self.perf_to_eerf_iteration = env_config.get("perf_to_eerf_iteration", 3900)
 
         # Peso per regolare reward step intermedio
         self.w_step = env_config["step_weight"]
@@ -208,9 +210,9 @@ class SatEnvironment(BaseEnvironment):
             current_iter = eval_count * 5 # L'evaluation avviene ogni 5 iterazioni, "evaluation_interval" in exp_config
             print(f"CURRENT ITER - - - {current_iter})")
 
-            if current_iter >= 750: # Iterazione target per cambio reward (es. 750)
+            if current_iter >= self.dorf_to_perf_iteration: # Iterazione target per cambio reward (es. 750)
                 self.phase_changed = True
-            if current_iter >= 3900:
+            if current_iter >= self.perf_to_eerf_iteration:
                 self.imit_learning = True
         
         if self.is_evaluation:
