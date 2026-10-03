@@ -3,7 +3,7 @@
     "batch_size": 128,
     "num_train_batches": 2,
     "gamma": 0.99,
-    "n_step": 6,
+    "n_step": 7,
 
     "lr_schedule": [
         [0, 0.001],
@@ -60,6 +60,9 @@
   },
   "debugging": {
     "log_level": "ERROR",
-    "seed": 36
+    "seed": 36,
+    "logger_config": {
+      "type": "ray.tune.logger.CSVLogger"
+    }
   }
 }
