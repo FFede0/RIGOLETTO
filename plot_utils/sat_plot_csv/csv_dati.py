@@ -285,13 +285,31 @@ if __name__ == "__main__":
   base_path = args.base_folder
   exp_phase = args.exp_phase
   output_file_name = args.output_file_name
-  file_path = os.path.join(
-    base_path, 'estratto_progress.csv'
-  ) if exp_phase == "training" else os.path.join(
-    base_path, 'estratto_evaluations.csv'
+  input_file_name = (
+    'estratto_progress.csv' if exp_phase == "training" else 
+    'estratto_evaluations.csv'
   )
-  output_file = os.path.join(
-    base_path, f'{exp_phase}_report_{output_file_name}.txt'
-  )
-  summary_csv = os.path.join(base_path, f'{exp_phase}_{output_file_name}.csv')
-  main(file_path, output_file, summary_csv)
+  file_path = os.path.join(base_path, input_file_name)
+  if os.path.exists(file_path):
+    output_file = os.path.join(
+      base_path, f'{exp_phase}_report_{output_file_name}.txt'
+    )
+    summary_csv = os.path.join(
+      base_path, f'{exp_phase}_{output_file_name}.csv'
+    )
+    main(file_path, output_file, summary_csv)
+  else:
+    for foldername in os.listdir(base_path):
+      if not foldername.startswith(".") and os.path.isdir(
+          os.path.join(base_path, foldername)
+        ):
+        print(80*"-")
+        print(foldername)
+        file_path = os.path.join(base_path, foldername, input_file_name)
+        output_file = os.path.join(
+          base_path, foldername, f'{exp_phase}_report_{output_file_name}.txt'
+        )
+        summary_csv = os.path.join(
+          base_path, foldername, f'{exp_phase}_{output_file_name}.csv'
+        )
+        main(file_path, output_file, summary_csv)

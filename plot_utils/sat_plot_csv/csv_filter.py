@@ -71,4 +71,13 @@ def main(base_folder):
 if __name__ == "__main__":
   args = parse_arguments()
   base_folder = args.base_folder
-  main(base_folder)
+  if os.path.exists(os.path.join(base_folder, 'progress.csv')):
+    main(base_folder)
+  else:
+    for foldername in os.listdir(base_folder):
+      if not foldername.startswith(".") and os.path.isdir(
+          os.path.join(base_folder, foldername)
+        ):
+        print(80*"-")
+        print(foldername)
+        main(os.path.join(base_folder, foldername))
