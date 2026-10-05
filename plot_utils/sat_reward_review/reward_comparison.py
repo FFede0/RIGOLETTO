@@ -94,28 +94,31 @@ def main(input_files: list, output_folder: str):
       y2 = reward_data_ma["max_reward_iter"].values,
       alpha = 0.2
     )
-    # plot Dijkstra bounds
-    if "curriculum" not in method:
-      dijkstra_reward = dijkstra_reward_data.loc[method, :]
-      color = plt.gca().lines[-1].get_color()
-      ax.axhline(
-        y = dijkstra_reward["total_reward_min"],
-        linestyle = "dashed",
-        linewidth = 2,
-        color = color
-      )
-      ax.axhline(
-        y = dijkstra_reward["total_reward_max"],
-        linestyle = "dashed",
-        linewidth = 2,
-        color = color
-      )
-      ax.axhline(
-        y = dijkstra_reward["total_reward_mean"],
-        linestyle = "solid",
-        linewidth = 3,
-        color = color
-      )
+  # plot Dijkstra bounds
+  for idx, method in enumerate(["PErf", "EErf"]):
+    dijkstra_reward = dijkstra_reward_data.loc[method, :]
+    color = [
+      mcolors.CSS4_COLORS["dimgrey"],
+      mcolors.CSS4_COLORS["black"]
+    ][idx]
+    ax.axhline(
+      y = dijkstra_reward["total_reward_min"],
+      linestyle = "dashed",
+      linewidth = 1,
+      color = color
+    )
+    ax.axhline(
+      y = dijkstra_reward["total_reward_max"],
+      linestyle = "dashed",
+      linewidth = 1,
+      color = color
+    )
+    ax.axhline(
+      y = dijkstra_reward["total_reward_mean"],
+      linestyle = "solid",
+      linewidth = 2,
+      color = color
+    )
   ax.set_xlabel("Evaluation interval")
   ax.set_ylabel("Reward")
   plt.show()
