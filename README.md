@@ -1,6 +1,8 @@
-# RIGOLETTO
+**R**e**I**nforcement learnin**G** f**O**r decentra**L**iz**E**d **T**opology-aware sa**T**ellite r**O**uting
 
-Reinforcement learninG fOr decentraLizEd Topology-aware saTellite rOuting
+<p align="center">
+<img width="251" height="194" alt="Screenshot 2026-10-26 at 09 17 07" src="https://github.com/user-attachments/assets/0325ebac-4493-4cfd-ba81-956546119c52" />
+</p>
 
 ### Custom environment for RL4CC library implementation for routing on satellite networks
 
