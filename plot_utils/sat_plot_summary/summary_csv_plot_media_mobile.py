@@ -48,18 +48,18 @@ def main(files_to_plot, output_folder):
   os.makedirs(output_folder, exist_ok=True)
 
   X_SCALE = 5 # Evaluation ogni 5 iterazioni, nel summary.csv sono salvate ogni 1
-  WINDOW_SIZE = 50  # Media mobile eg 10 punti (50 iterazioni reali se X_SCALE=5)
-  WINDOW_SIZE_OPT = 50 # Media mobile per rotta ottimale e con errori per poter calcolare: media, min e max su questo range di iterazioni
-  WINDOW_SIZE_OPT_FINAL = 50 # Media mobile per tabella riassuntiva rotta ottimale
-  WINDOW_SIZE_REWARD = 50 # Media mobile per il reward
+  WINDOW_SIZE = 100  # Media mobile eg 10 punti (50 iterazioni reali se X_SCALE=5)
+  WINDOW_SIZE_OPT = 100 # Media mobile per rotta ottimale e con errori per poter calcolare: media, min e max su questo range di iterazioni
+  WINDOW_SIZE_OPT_FINAL = 100 # Media mobile per tabella riassuntiva rotta ottimale
+  WINDOW_SIZE_REWARD = 100 # Media mobile per il reward
   # Parametri per la penalità (Per grafico scostamento rispetto a dijktra) 
   MAX_PENALTY = 700 # Valore assegnato ad ogni flusso NON concluso (eg: 350%, usare il massimo tra i vari summary, mettere a 0 con anche WINDOW_SIZE ad 1 e vedere il valore massimo che esce)
   TOT_FLOWS = 10 # Numero di flussi per ogni valutazione
 
   # --- PARAMETRI ZOOM ---
   ENABLE_ZOOM = True
-  ZOOM_CENTER = 5500      # Dove centrare lo zoom (asse X)
-  ZOOM_RANGE = 500        # Estensione prima e dopo
+  ZOOM_CENTER = 5000      # Dove centrare lo zoom (asse X)
+  ZOOM_RANGE = 3000        # Estensione prima e dopo
   ZOOM_Y_LIMIT = 105      # Limite superiore asse Y per i dettagli
   PADDING_PCT = 10        # Padding per grafici ptc e reward
   PADDING_RWD = 0.20
@@ -158,7 +158,7 @@ def main(files_to_plot, output_folder):
           elements_to_hide = [] # Lista elementi da non mettere nello zoom (per deviaz. standard, min e max)
 
           for file_path in files_to_plot:
-              file_name = os.path.basename(file_path)
+              file_name = os.path.basename(file_path).replace(".csv", "")
               
               if os.path.exists(file_path):
                   df = pd.read_csv(file_path).copy() # Fa una copia non modifica gli originali
@@ -222,13 +222,13 @@ def main(files_to_plot, output_folder):
                           fill1 = plt.fill_between(x_values, 
                                           (y_smooth - std_smooth).clip(lower=0), # (media - std_dev) per avere estremo inferiore
                                           (y_smooth + std_smooth).clip(upper=y_max_smooth), # (media + std_dev) per avere estremo superiore
-                                          color=line.get_color(), alpha=0.25) # Etichetta  label=f"Std Dev {file_name}"
+                                          color=line.get_color(), alpha=0.05) # Etichetta  label=f"Std Dev {file_name}"
                           
                           # Per estremi Min/Max, la "," è usata per estrarre la linea dalla lista restituita da plt.plot
                           line_max, = plt.plot(x_values, y_max_smooth, color=line.get_color(), 
-                                  linestyle='--', linewidth=0.8, alpha=0.5)
+                                  linestyle='--', linewidth=0.8, alpha=0.1)
                           line_min, = plt.plot(x_values, y_min_smooth, color=line.get_color(), 
-                                  linestyle='--', linewidth=0.8, alpha=0.5)
+                                  linestyle='--', linewidth=0.8, alpha=0.1)
                           
                           # Per area tra i minimi e i massimi
                           fill2 = plt.fill_between(x_values, y_min_smooth.clip(lower=0), y_max_smooth, 
@@ -246,7 +246,7 @@ def main(files_to_plot, output_folder):
                       
                       # Area tra il minimo e il massimo dei reward registrati in quell'iterazione
                       fill = plt.fill_between(x_values, y_min_smooth, y_max_smooth, 
-                                       color=line.get_color(), alpha=0.15)
+                                       color=line.get_color(), alpha=0.05)
                       elements_to_hide.append(fill)
 
                       #plt.title(f"Reward Trend ({WINDOW_SIZE_REWARD}-points Moving Average): {ylabel}")
