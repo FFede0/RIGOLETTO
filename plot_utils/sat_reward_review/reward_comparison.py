@@ -73,11 +73,11 @@ def main(input_files: list, output_folder: str):
   reward_data = load_data(input_files)
   dijkstra_reward_data = load_dijkstra_data()
   # plot
-  _, ax = plt.subplots()
+  _, ax = plt.subplots(figsize = (12,8))
   for method, method_reward in reward_data.groupby("method"):
     # moving average
     reward_data_ma = method_reward.rolling(
-      window = 50
+      window = 100
     ).mean(numeric_only = True)
     # plot
     reward_data_ma.plot(
@@ -86,13 +86,14 @@ def main(input_files: list, output_folder: str):
       label = method,
       linewidth = 2,
       ax = ax,
-      grid = True
+      grid = True,
+      fontsize = 14
     )
     ax.fill_between(
       x = reward_data_ma["iteration"].values,
       y1 = reward_data_ma["min_reward_iter"].values,
       y2 = reward_data_ma["max_reward_iter"].values,
-      alpha = 0.2
+      alpha = 0.1
     )
   # plot Dijkstra bounds
   for idx, method in enumerate(["PErf", "EErf"]):
@@ -119,9 +120,11 @@ def main(input_files: list, output_folder: str):
       linewidth = 2,
       color = color
     )
-  ax.set_xlabel("Evaluation interval")
-  ax.set_ylabel("Reward")
-  plt.show()
+  ax.set_xlabel("Evaluation interval", fontsize = 14)
+  ax.set_ylabel("Reward", fontsize = 14)
+  plt.legend(fontsize = 14)
+  plt.savefig(os.path.join(output_folder, "reward_comparison.png"), dpi=300)
+  plt.close()
 
 
 if __name__ == "__main__":
