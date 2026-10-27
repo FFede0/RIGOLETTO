@@ -13,11 +13,10 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install --upgrade pip
 
-# Installa torch prima per tenerlo in cache e poi i requirements
 WORKDIR /app
-RUN pip install torch
+RUN pip install --no-cache-dir torch
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia lo script principale ed i file necessari
 COPY main.py .
