@@ -412,6 +412,8 @@ def save_satellite_topology_during_simulation(filename: str = f"satellite_topolo
         w_target = sat._links[Direction.WEST].target.get_name() if sat._links[Direction.WEST].target else "None"
         
         # Struttura dati per un singolo satellite (ID, latitudine, longitudine e i suoi vicini)
+
+        #-----------------------------MODIFICARE PER AGGIUNGERE INFO DI CONGESTIONE DEI LINK------------------------------------
         satellite_data = {
             "id": sat_id,
             "lat": sat.get_latitude(),

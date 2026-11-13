@@ -20,20 +20,30 @@ class SatEnvironment(BaseEnvironment):
     _topo_by_time = None
     _seed = 0
 
+    
     def __init__(self, env_config: EnvContext):
-            
-            # Carica dati una sola volta all'inizio
+
+        # Modalità di adattamento al simulatore esterno
+        self.external_simulator = bool(
+            env_config.get("external_simulator", False)
+        )
+
+        # caricamento dei flussi e delle topologie dai JSON.
+        if not self.external_simulator:
+
             if SatEnvironment._flows is None:
                 self._load_static_data(env_config)
 
-            # Carica tutta la configurazione(gestione)
-            seed = self.load_configuration(env_config)
+        # configurazione originale.
+        seed = self.load_configuration(env_config)
 
-            # Ridefinizione spazi sovrascrivendo quelli base_environment
-            self.define_observation_space()
-            self.define_action_space()
+        self.define_observation_space()
+        self.define_action_space()
 
+        # inizializzazione fornita dal simulatore esterno; in caso contrario, procedi con l'esecuzione base
+        if not self.external_simulator:
             self.reset(seed=seed)
+
 
     def _load_static_data(self, env_config):
         """
@@ -117,12 +127,12 @@ class SatEnvironment(BaseEnvironment):
         # range lat -90,+90 , range lon -180,+180 , per valori None considero -190 per entrambi lat e lon.
         self.min_lat_lon = -190
         self.max_lat_lon = 190
-
+#--------------------------------------------------AGGIUNGERE LE METRICHE DI CONGESTIONE DEI NODI VICINI (o vicini dei vicini se previsto)----------------------------------
         self.observation_space = Box(
-            low = self.min_lat_lon,
-            high = self.max_lat_lon,
-            shape = (10,),
-            dtype = np.float32
+            low=self.min_lat_lon,
+            high=self.max_lat_lon,
+            shape=(10,),
+            dtype=np.float32
         )
 
 
@@ -133,13 +143,16 @@ class SatEnvironment(BaseEnvironment):
         """
         self.action_space = Discrete(3)
 
-
+#--------------------------------------------------AGGIUNGERE INFORMAZIONI RIGUARDANTI LA BANDA DEI LINK VERSO I 3 VICINI---------------------------------------------
     def observation(self):
-        obs = np.array([self.cur_lat, self.cur_lon,
-                        self.lat1, self.lon1,
-                        self.lat2, self.lon2,
-                        self.lat3, self.lon3,
-                        self.end_lat, self.end_lon])
+        obs = np.array([
+            self.cur_lat, self.cur_lon,
+            self.lat1, self.lon1,
+            self.lat2, self.lon2,
+            self.lat3, self.lon3,
+            self.end_lat, self.end_lon
+        ])
+
         info = {
             "current_time": self.current_time,
             "step_reward": self.last_reward,
@@ -188,11 +201,24 @@ class SatEnvironment(BaseEnvironment):
         self.end_lon = -190.0
 
         
+        
         super().reset(seed=seed)
-        print(f"seed in reset:",seed)
+        print(f"seed in reset:", seed)
 
-        counter_path = "/app/eval_counter.txt" # File che fa da contatore per il numero di iterazioni
-    
+ 
+        # In modalità esterna viene fornita topologia, sorgente e destinazione.
+        if self.external_simulator:
+            if options is None:
+                raise ValueError(
+                    "Modalità esterna: funzione reset() non disponibile"
+                )
+
+            return self._reset_external(options)
+
+        # Se external_simulator=False, l'ambiente continua
+        # a utilizzare i file e la procedura di training originale.
+        counter_path = "/app/eval_counter.txt"
+
         # All'inizio del ciclo evaluation scrive nel file contatore delle iterazioni
         if self.is_evaluation and self.flow_index == 0:
             with open(counter_path, "a") as f:
@@ -239,6 +265,7 @@ class SatEnvironment(BaseEnvironment):
 
 
         # Topologia associata al time
+        #-----------------------------------------------------------UTILIZZARE ANCHE INFO SULLE CONGESTIONI (recuperare dal simulatore)--------------------------------------
         self.topology = SatEnvironment._topo_by_time[flow_time]
 
         # Lookup per i satelliti dell'attuale topologia: (id) -> satellite
@@ -281,6 +308,84 @@ class SatEnvironment(BaseEnvironment):
         return obs, info
 
 
+    def _reset_external(self, options):
+        """
+        Inizializza un episodio RIGOLETTO con dati esterni.
+
+        Non sceglie un flusso dai JSON.
+        Mantiene le strutture e le funzioni originali.
+        """
+
+        self.topology = options["topology"]
+        self.start_id = int(options["start_id"])
+        self.end_id = int(options["end_id"])
+
+        if self.start_id == self.end_id:
+            raise ValueError(
+                "Sorgente e destinazione devono essere diverse"
+            )
+
+        # Stessa struttura sat_by_id del reset originale.
+        self.sat_by_id = {
+            sat["id"]: sat
+            for sat in self.topology["satellites"]
+        }
+
+        if self.start_id not in self.sat_by_id:
+            raise ValueError("Satellite sorgente non presente")
+
+        if self.end_id not in self.sat_by_id:
+            raise ValueError("Satellite destinazione non presente")
+
+        self.sat_by_coords = {
+            (sat["lat"], sat["lon"]): sat_id
+            for sat_id, sat in self.sat_by_id.items()
+        }
+
+        self.current_sat = self.start_id
+
+        # Manteniamo il calcolo del grafo previsto da RIGOLETTO.
+        self.G = self._build_graph()
+
+        # Dijkstra calcolato sulla topologia ricevuta:
+        # sostituisce il risultato precomputato nei JSON.
+        self.optimal_path = nx.dijkstra_path(
+            self.G,
+            self.start_id,
+            self.end_id,
+            weight="weight"
+        )
+
+        self.dijkstra_dist = nx.dijkstra_path_length(
+            self.G,
+            self.start_id,
+            self.end_id,
+            weight="weight"
+        )
+
+        self.dijkstra_hop = len(self.optimal_path) - 1
+
+        self.cur_lat = self.sat_by_id[self.current_sat]["lat"]
+        self.cur_lon = self.sat_by_id[self.current_sat]["lon"]
+
+        self.end_lat = self.sat_by_id[self.end_id]["lat"]
+        self.end_lon = self.sat_by_id[self.end_id]["lon"]
+
+        # Funzione originale di RIGOLETTO.
+        first_obs = self.compute_first_neighbors(
+            self.current_sat
+        )
+
+        self.lat1 = first_obs[2]
+        self.lon1 = first_obs[3]
+        self.lat2 = first_obs[4]
+        self.lon2 = first_obs[5]
+        self.lat3 = first_obs[6]
+        self.lon3 = first_obs[7]
+
+        return self.observation()
+
+
     def step(self, action):
         """
         In base all'action presa imposta i nuovi valori usati dall'osservazione:
@@ -297,7 +402,7 @@ class SatEnvironment(BaseEnvironment):
         print(" -- ACTION selected:", action) # DEBUG action
         idx = 2 + (action * 2)
         act_lat = s_obs[idx]
-        act_lon = s_obs[idx+1]
+        act_lon = s_obs[idx + 1]
         print(" -- LAT selected by action:", act_lat) # DEBUG lat
 
         if act_lat < -189.0 and act_lon < -189.0 : # Vicino non valido, agente sta fermo e non fa nulla
@@ -344,7 +449,7 @@ class SatEnvironment(BaseEnvironment):
 
         while len(filtered_neighbors) < 3: # Controllo per quando ho 2 volte lo stesso vicino, ed ho solo 2 valori in filtered_neighbors
             filtered_neighbors.append("None")
-
+#------------------------------------------------RECUPERARE ANCHE INFO SULLE METRICHE DI CARICO---------------------------------------------------------
         lat_lon_values = [] # Recupera lat e lon dei nuovi vicini ed aggiorna i valori dell'osservazione
         
         for n_id in filtered_neighbors:
@@ -378,7 +483,7 @@ class SatEnvironment(BaseEnvironment):
         obs, info = self.observation()
 
         return obs, reward, terminated, truncated, info
-
+#------------------------------------------------MODIFICARE LA REWARD ANCHE IN FUNZIONE DELLE SCELTE RELATIVE ALLA CONGESTIONE DEL LINK--------------------------------
 
     def compute_reward(self):
         """
@@ -445,7 +550,8 @@ class SatEnvironment(BaseEnvironment):
             return 0.0 
         # Non posso avere divisione per zero, perchè ho sempre almeno un satellite da cui arrivo ed uno dove posso andare per le distanze
         # Molto difficilmente hanno esattamente la stessa distanza dalla destinazione, 
-        # ed il caso vicini tutti None è gestito implicitamente nello step (se non ho action valida sto fermo)        
+        # ed il caso vicini tutti None è gestito implicitamente nello step (se non ho action valida sto fermo) 
+        #------------------------------------------------------AGGIUNGERE PREMIO BASATO SULLA CONGESTIONE---------------------------------------------------------------       
         step_dyn_reward = ((1 - (d_current - d_near) / (d_far - d_near)))
         base_reward = (1/30) * step_dyn_reward * self.w_step  # 1/30 perchè 30 è il numero max di step per episodio
         #base_reward = 1.0
@@ -455,6 +561,7 @@ class SatEnvironment(BaseEnvironment):
         
         # - FLAG: Imitation learning Dijkstra -
         # Cambiare self.imit_learning in self.phase_changed per unire al curriculum learning
+        #-----------------------------------------------DA RIVEDERE PROBABILMENTE LA SCELTA DI DIJKSTRA------------------------------------------------------
         if self.imit_learning: # Cambiare flag in load_configuration se si vuole usare reward con esperto dijkstra o meno
             
             # Se il satellite scelto è il prossimo nel percorso ottimo
@@ -507,40 +614,41 @@ class SatEnvironment(BaseEnvironment):
         neighbors = cur_sat["neighbors"]
         dirs = ["n", "s", "e", "w"]
 
+
+      
         accepted_neighbors = []
-        
-        has_none = any(neighbors[d] == "None" for d in dirs) # Controllo se esiste almeno un vicino "None"
-        if has_none: # Salvo gli altri vicini validi
+
+        has_none = any(neighbors[d] == "None" for d in dirs)
+
+        if has_none:
             for d in dirs:
                 n_id = neighbors[d]
                 if n_id != "None":
                     accepted_neighbors.append(int(n_id))
         else:
-            # Tutti i vicini sono validi: calcolo la distanza di ciascun vicino da end_id
-            distances = [] # Ogni elemento (id_sat, dist_ad_end)
+            distances = []
 
             for d in dirs:
                 n_id = int(neighbors[d])
-                dist = self.sat_distance(self.sat_by_id[n_id], self.sat_by_id[self.end_id])
+                dist = self.sat_distance(
+                    self.sat_by_id[n_id],
+                    self.sat_by_id[self.end_id]
+                )
                 distances.append((n_id, dist))
 
-            # Ordina i vicini in base alla distanza (cioè il valore 1 dell'elemento x in distances) dall'end (più vicino prima)
             distances.sort(key=lambda x: x[1])
-
-            # Salva solo gli id ordinati dalle tuple in distances
             accepted_neighbors = [n_id for n_id, _ in distances]
-       
-        # Controllo se ho avuto più di un None iniziale faccio padding, inserendo dall'inizio, con sat migliore fino ad avere 3 sat
+
         if 0 < len(accepted_neighbors) < 3:
             best_neighbor = accepted_neighbors[0]
             while len(accepted_neighbors) < 3:
                 accepted_neighbors.insert(0, best_neighbor)
 
-        # Inserisce lat e lon dei 3 vicini accettati (i più vicini), valori first_obs[da 2 a 7]
+        # lat e lon dei 3 vicini accettati
         idx = 2
-        for n_id in accepted_neighbors[:3]: 
+        for n_id in accepted_neighbors[:3]:
             n_sat = self.sat_by_id[n_id]
-            print ("SATELLITE VICINO ---", n_sat) # DEBUG first neighbors
+            print("SATELLITE VICINO ---", n_sat)
             first_obs[idx] = n_sat["lat"]
             first_obs[idx + 1] = n_sat["lon"]
             idx += 2
@@ -561,7 +669,7 @@ class SatEnvironment(BaseEnvironment):
 
         distance = geodesic(coord1, coord2).kilometers
         return distance
-    
+    #----------------------------------------------------IL PESO DEGLI ARCHI DEVE CONSIDERARE LA CONGESTIONE-----------------------------------------------------
     def _build_graph(self):
         import networkx as nx
         G = nx.Graph()
