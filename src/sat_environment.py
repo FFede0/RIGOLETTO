@@ -105,6 +105,20 @@ class SatEnvironment(BaseEnvironment):
 
         return SatEnvironment._seed  # seed, nel base_environment questa funzione restituisce un seed da passare al reset
 
+    def update_online_curriculum(self, completed_updates):
+        """
+        Aggiorna il curriculum durante il training con simulatore esterno.
+        """
+        if not self.external_simulator:
+            raise RuntimeError(
+                "Curriculum online disponibile solo in modalità esterna"
+            )
+
+        if completed_updates < 0:
+            raise ValueError("Il progresso non può essere negativo")
+        #Leghiamo il progresso agli aggiornamenti delle DQN
+        self.phase_changed = completed_updates >= 750
+        self.imit_learning = completed_updates >= 3900
 
     def define_observation_space(self):
         """

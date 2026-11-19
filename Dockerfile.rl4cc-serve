@@ -1,0 +1,108 @@
+FROM python:3.11-slim
+
+# ------------------------------------------------------------------
+# Environment
+# ------------------------------------------------------------------
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+# -- RL4CC installation
+ENV RL4CC_URL=https://github.com/FFede0/RL4CC.git
+ENV RL4CC_RAW_URL=https://raw.githubusercontent.com/FFede0/RL4CC
+ARG RL4CC_TAG=serve_train_endpoint
+# -- runtime configuration
+ENV INPUT_CHECKPOINT_DIR=/app/models/checkpoint
+ENV OUTPUT_CHECKPOINT_DIR=/app/models/online_checkpoints
+ENV CONFIGURATION_FILE=/app/config/config.json
+ENV LOG_FILE_BASE=/app/logs/rl4cc
+# -- bootstrap modules (comma-separated, optional)
+ENV APP_BOOTSTRAP_MODULES=""
+
+# ------------------------------------------------------------------
+# System dependencies
+# ------------------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    g++ \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------
+# Create non-root user
+# ------------------------------------------------------------------
+RUN useradd -m appuser
+
+# ------------------------------------------------------------------
+# Working directory
+# ------------------------------------------------------------------
+WORKDIR /app
+
+# ------------------------------------------------------------------
+# Install dependencies
+# ------------------------------------------------------------------
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir \
+    cloudpickle \
+    dm-tree \
+    fastapi \
+    fsspec \
+    'gymnasium>=0.28.1' \
+    jsonschema \
+    lz4 \
+    numpy==1.25.0 \
+    opencv-python==4.9.0.80 \
+    pandas \
+    protobuf==7.36.1 \
+    pyarrow==12.0.1 \
+    pydantic \
+    pyyaml \
+    ray==2.20.0 \
+    rich \
+    scikit-image \
+    scipy==1.14.1 \
+    torch==2.14.0 \
+    typer \
+    uvicorn
+
+# ------------------------------------------------------------------
+# Install RL4CC from Git
+# ------------------------------------------------------------------
+RUN pip install git+${RL4CC_URL}@${RL4CC_TAG}
+RUN curl -L \
+    ${RL4CC_RAW_URL}/${RL4CC_TAG}/deployment/rl4cc-serve.sh \
+    -o /app/rl4cc-serve.sh
+
+# ------------------------------------------------------------------
+# Create directories expected by env variables
+# ------------------------------------------------------------------
+RUN mkdir -p ${INPUT_CHECKPOINT_DIR} /app/config /app/logs
+
+# ------------------------------------------------------------------
+# Copy additional files from context (and install modules if required)
+# ------------------------------------------------------------------
+COPY . /app
+RUN if [ -f /app/requirements.rl4cc-serve.txt ]; then \
+    echo "Installing additional Python dependencies from requirements.rl4cc-serve.txt"; \
+    pip install -r /app/requirements.rl4cc-serve.txt; \
+else \
+    echo "No additional requirements.rl4cc-serve.txt found"; \
+fi
+
+# ------------------------------------------------------------------
+# Set ownership and change user
+# ------------------------------------------------------------------
+ENV PYTHONPATH=/app
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# ------------------------------------------------------------------
+# Expose port
+# ------------------------------------------------------------------
+EXPOSE 8000
+
+# ------------------------------------------------------------------
+# Run FastAPI app
+# ------------------------------------------------------------------
+RUN chmod +x rl4cc-serve.sh
+ENTRYPOINT ["./rl4cc-serve.sh"]

@@ -5,6 +5,7 @@ import numpy as np
 from routing_metrics import identify_controller 
 from routing_metrics import start_routing_metrics 
 from routing_metrics import finalize_routing_metrics 
+from rigoletto_validator import validate_state
 import geopy.distance
 import simpy
 import numba
@@ -116,25 +117,61 @@ CUSTOM_LOG = "custom_simulation.jsonl" #salvataggio periodico delle azioni logga
 
 
 RIGOLETTO_DIRECT_DESTINATION_TEST = True #equivalente di noPingPong ma per rigoletto
+RIGOLETTO_RECORD_TRANSITIONS = True #registrazione transizioni per training
+RIGOLETTO_RANDOM_COLLECTION = True #abilito l'inizializzazione con random policy
+RIGOLETTO_ONLINE_TRAINING = True
+RIGOLETTO_RESUME_DQN = True
 
-RIGOLETTO_CHECKPOINT_PATH = (
-    "/Users/zappettini/Desktop/Tesi/RIGOLETTO/results/"
-    "baseline_full_5000/"
-    "DQN_SatEnvironment_2026-09-26_13-46-21.337460/"
-    "checkpoints/5000/algo_state.pkl"
+RIGOLETTO_CHECKPOINT_VERSION = "5000"
+
+RIGOLETTO_CHECKPOINT_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "checkpoints",
+    RIGOLETTO_CHECKPOINT_VERSION,
+    "algo_state.pkl"
 )
+
 
 #importazione specifice RIGOLETTO
 RIGOLETTO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..")
+    os.path.join(os.path.dirname(__file__), "RIGOLETTO_original")
 )
 
 sys.path.insert(0, RIGOLETTO_ROOT)
 
 
 rigoletto_policy = None
+rigoletto_online_trainer = None
 
 if USE_RIGOLETTO_CONTROL:
+    from src.sat_environment import SatEnvironment
+
+if USE_RIGOLETTO_CONTROL and RIGOLETTO_RANDOM_COLLECTION:
+    from rigoletto_online_training import RigolettoOnlineTrainer
+    rigoletto_online_trainer = RigolettoOnlineTrainer(seed=36)
+
+    if RIGOLETTO_ONLINE_TRAINING:
+        rigoletto_online_trainer.enable_online_training(
+            base_url="http://127.0.0.1:8001",
+            batch_size=128,
+            train_every=128,
+            target_update_every=500
+        )
+        if RIGOLETTO_RESUME_DQN:
+            rigoletto_online_trainer.mode = 'dqn'
+            rigoletto_online_trainer.train_calls = 2849
+
+
+    elif RIGOLETTO_RESUME_DQN:
+        from rigoletto_rl4cc_client import RigolettoRL4CCClient
+
+        rigoletto_online_trainer.client = RigolettoRL4CCClient(
+            base_url="http://127.0.0.1:8001"
+        )
+        rigoletto_online_trainer.mode = "dqn"
+        print("RIGOLETTO: valutazione DQN senza training", flush=True)
+
+if USE_RIGOLETTO_CONTROL and not RIGOLETTO_RANDOM_COLLECTION:
     from ray.rllib.policy.policy import Policy
     from src.sat_environment import SatEnvironment
     with open(RIGOLETTO_CHECKPOINT_PATH, "rb") as f:
@@ -156,9 +193,6 @@ FL_Test     = False     # If True, it plots the model divergence the model diver
 plotSatID   = True      # If True, plots the ID of each satellite
 plotAllThro = True      # If True, it plots throughput plots for each single path between gateways. If False, it plots a single figure for overall Throughput
 plotAllCon  = True      # If True, it plots congestion maps for each single path between gateways. If False, it plots a single figure for overall congestion
-
-movementTime= 1000    # Every movementTime seconds, the satellites positions are updated and the graph is built again
-                        # If do not want the constellation to move, set this parameter to a bigger number than the simulation time
 ndeltas = 1 #1 Movement speedup factor. Every movementTime sats will move movementTime*ndeltas space. If bigger, will make the rotation distance bigger
 
 Train       = False      # Global for all scenarios with different number of GTs. if set to false, the model will not train any of them
@@ -204,14 +238,14 @@ min_rate= 10e3  # Minimum rate in kbps
 
 # Uplink Parameters
 balancedFlow=  True         # if set to true all the generated traffic at each GT is equal
-totalFlow   = 2*1000000000  # Total average flow per GT when the balanced traffc option is enabled. Malaga has 3*, LA has 3*, Nuuk/500
+totalFlow   = 1300000000 # Total average flow per GT when the balanced traffc option is enabled. Malaga has 3*, LA has 3*, Nuuk/500
 avUserLoad  = 8593 * 8      # average traffic usage per second in bits
 
 # Block
 BLOCK_SIZE   = 64800
 
 # Movement and structure
-movementTime= 1000 # Every movementTime seconds, the satellites positions are updated and the graph is built again
+movementTime = 3 # Every movementTime seconds, the satellites positions are updated and the graph is built again
 #                         # If do not want the constellation to move, set this parameter to a bigger number than the simulation time
 # ndeltas     = 5805.44/20#1 Movement speedup factor. This number will multiply deltaT. If bigger, will make the rotation distance bigger
 saveISLs    = True     # save ISLs map
@@ -306,6 +340,11 @@ tablesPath  = './pre_trained_NNs/qTablesExport_8GTs/'
 if __name__ == '__main__':
     # nnpath          = f'./pre_trained_NNs/qNetwork_8GTs.h5'
     outputPath      = './Results/{}_{}s_[{}]_Del_[{}]_w1_[{}]_w2_{}_GTs/'.format(pathing, float(pd.read_csv("inputRL.csv")['Test length'][0]), ArriveReward, w1, w2, GTs)
+    if RIGOLETTO_ONLINE_TRAINING:
+        outputPath = outputPath.rstrip('/') + '_train_resume2849/'
+    elif RIGOLETTO_RESUME_DQN:
+        outputPath = outputPath.rstrip('/') + '_eval5700_lowtraffic50/'
+
     populationMap   = 'Population Map/gpw_v4_population_count_rev11_2020_15_min.tif'
 
 ###############################################################################
@@ -413,16 +452,15 @@ def custom_watchdog(block):
             "TIME_SINCE_CREATION"
         )
 
-# Rimuove il primo DataBlock dal buffer di trasmissione insieme al relativo evento SimPy, mantenendo allineate le due liste:
-# -  Se viene rimosso l'ultimo elemento, crea un nuovo evento per permettere al buffer di ricevere successive trasmissioni.
-def custom_pop_head(send_buffer, env):
-    if len(send_buffer[0]) == 1:
-        send_buffer[0].pop(0)
-        send_buffer[1].pop(0)
+
+def pop_send_buffer_head(send_buffer, env):
+    """Rimuove il primo pacchetto e il relativo evento SimPy."""
+
+    send_buffer[0].pop(0)
+    send_buffer[1].pop(0)
+
+    if not send_buffer[0]:
         send_buffer[0].append(env.event())
-    else:
-        send_buffer[0].pop(0)
-        send_buffer[1].pop(0)
 
 
 
@@ -1700,19 +1738,6 @@ class Satellite:
 
             if not destination_reached:
 
-                timeout_record = {
-                    "event": "STEP_LIMIT_TIMEOUT",
-                    "block_id": block.ID,
-                    "satellite": self.ID,
-                    "time": float(self.env.now),
-                    "rigoletto_steps": block.rigoletto_steps,
-                    "hole_counter": block.rigoletto_hole_counter,
-                    "recent_path": [
-                        step[0]
-                        for step in block.QPath[:-1][-12:]
-                    ]
-                }
-
                 block.rigoletto_timed_out = True
                 block.path = -1
 
@@ -1740,12 +1765,6 @@ class Satellite:
                 )
             else:
                 prevSat = None
-
-
-            was_waiting = False
-            wait_count = 0
-            wait_start_time = None
-
 
             while True:
 
@@ -2019,15 +2038,9 @@ class Satellite:
             observation, info = agent.observation()
 
             observation = np.asarray(
-                observation,
+                validate_state(observation),
                 dtype=np.float32
             )
-
-            if observation.shape != (10,):
-                raise ValueError(
-                    f"Stato RIGOLETTO non valido: {observation.shape}; atteso (10,)"
-                )
-
             slots = observation[2:8].reshape(3, 2)
 
             if np.all(slots < -189.0):
@@ -2056,17 +2069,24 @@ class Satellite:
                 f"le azioni disponibili da {self.ID}"
             )
 
-            # Policy DQN originale di RIGOLETTO.
-            action, _, _ = rigoletto_policy.compute_single_action(
-                observation,
-                explore=False
-            )
+            # Selezione random o policy RIGOLETTO pre-addestrata.
+            if RIGOLETTO_RANDOM_COLLECTION:
+                action = rigoletto_online_trainer.select_action(observation)
+
+                if action is None:
+                    return "RIGOLETTO_WAIT"
+            else:
+                action, _, _ = rigoletto_policy.compute_single_action(
+                    observation,
+                    explore=False
+                )
+
             policy_action = int(action)
             # Conserva lo stato precedente per rilevare azioni non valide.
             previous_id = agent.current_sat
 
             # Regola generale di consegna diretta della baseline validata.
-            if RIGOLETTO_DIRECT_DESTINATION_TEST:
+            if RIGOLETTO_DIRECT_DESTINATION_TEST and not RIGOLETTO_RANDOM_COLLECTION:
                 candidate_coords = [
                     (agent.lat1, agent.lon1),
                     (agent.lat2, agent.lon2),
@@ -2082,9 +2102,61 @@ class Satellite:
                         action = candidate_action
                         break
 
+            if rigoletto_online_trainer is not None:
+                curriculum_updates = (
+                    rigoletto_online_trainer.train_calls
+                    if RIGOLETTO_ONLINE_TRAINING
+                    else 5700
+                )
+                agent.update_online_curriculum(curriculum_updates)
+            # La reward viene calcolata dentro agent.step()
+            # anche durante la valutazione senza training.
             next_obs, reward, terminated, truncated, info = (
                 agent.step(int(action))
             )
+
+            if RIGOLETTO_RANDOM_COLLECTION:
+                rigoletto_online_trainer.record_transition(
+                    block_id=block.ID,
+                    state=observation,
+                    action=int(action),
+                    reward=float(reward),
+                    next_state=next_obs,
+                    terminated=bool(terminated),
+                    truncated=bool(truncated)
+                )
+
+            # Registrazione delle transizioni RIGOLETTO per RL4CC.
+            if RIGOLETTO_RECORD_TRANSITIONS and not RIGOLETTO_RANDOM_COLLECTION:
+                import json
+                from pathlib import Path
+
+                transition = {
+                    "block_id": str(block.ID),
+                    "timestep": int(agent.step_counter),
+                    "observation": np.asarray(
+                        observation, dtype=np.float32
+                    ).reshape(-1).tolist(),
+                    "action": int(action),
+                    "policy_action": int(policy_action),
+                    "reward": float(reward),
+                    "next_observation": np.asarray(
+                        next_obs, dtype=np.float32
+                    ).reshape(-1).tolist(),
+                    "terminated": bool(terminated),
+                    "truncated": bool(truncated),
+                    "action_overridden": int(action) != int(policy_action),
+                }
+
+                output = (
+                    Path(__file__).resolve().parent
+                    / "Results"
+                    / "rigoletto_transitions_10d.jsonl"
+                )
+                output.parent.mkdir(parents=True, exist_ok=True)
+
+                with output.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(transition, allow_nan=False) + "\n")
 
             # Sincronizziamo i contatori del DataBlock.
             block.rigoletto_steps = agent.step_counter
@@ -2235,7 +2307,7 @@ class Satellite:
                 if CUSTOM_MODE and custom_is_terminal(
                     sendBuffer[1][0]
                 ):
-                    custom_pop_head(sendBuffer, self.env)
+                    pop_send_buffer_head(sendBuffer, self.env)
                     continue
 
                 # ANCHOR KPI: queueLatency at sat
@@ -2309,7 +2381,7 @@ class Satellite:
                 if CUSTOM_MODE and custom_is_terminal(
                     sendBuffer[1][0]
                 ):
-                    custom_pop_head(sendBuffer, self.env)
+                    pop_send_buffer_head(sendBuffer, self.env)
                     continue
 
 
@@ -2331,15 +2403,8 @@ class Satellite:
                 )
                 receiver.createReceiveBlockProcess(sendBuffer[1][0], propTime)
 
-                # remove from own buffer
-                if len(sendBuffer[0]) == 1:
-                    sendBuffer[0].pop(0)
-                    sendBuffer[1].pop(0)
-                    sendBuffer[0].append(self.env.event())
-
-                else:
-                    sendBuffer[0].pop(0)
-                    sendBuffer[1].pop(0)
+                # Rimuove il pacchetto trasmesso dalla coda.
+                pop_send_buffer_head(sendBuffer, self.env)
             except simpy.Interrupt:
                 # print(f'Simpy interrupt at sending block at satellite {self.ID} to {destination[1].ID}') # FIXME Are they really lost blocks?
                 # self.orbPlane.earth.lostBlocks+=1
@@ -2783,7 +2848,7 @@ class Gateway:
             if CUSTOM_MODE and custom_is_terminal(
                 self.sendBuffer[1][0]
             ):
-                custom_pop_head(self.sendBuffer, self.env)
+                pop_send_buffer_head(self.sendBuffer, self.env)
                 continue
             
             # Attende che la ground station stabilisca un collegamento con un satellite
@@ -2800,7 +2865,7 @@ class Gateway:
             if CUSTOM_MODE and custom_is_terminal(
                 self.sendBuffer[1][0]
             ):
-                custom_pop_head(self.sendBuffer, self.env)
+                pop_send_buffer_head(self.sendBuffer, self.env)
                 continue
 
             # Calcola il tempo di propagazione verso il satellite collegato
@@ -2827,7 +2892,7 @@ class Gateway:
             if CUSTOM_MODE and custom_is_terminal(
                 self.sendBuffer[1][0]
             ):
-                custom_pop_head(self.sendBuffer, self.env)
+                pop_send_buffer_head(self.sendBuffer, self.env)
                 continue
 
             # ANCHOR KPI: txLatency send block from GT
@@ -2852,14 +2917,8 @@ class Gateway:
             # Istruzione originale: invio al satellite
             self.linkedSat[1].createReceiveBlockProcess(self.sendBuffer[1][0], propTime)
 
-            # remove from own sendBuffer
-            if len(self.sendBuffer[0]) == 1:
-                self.sendBuffer[0].pop(0)
-                self.sendBuffer[1].pop(0)
-                self.sendBuffer[0].append(self.env.event())
-            else:
-                self.sendBuffer[0].pop(0)
-                self.sendBuffer[1].pop(0)
+            # Rimuove il pacchetto trasmesso dalla coda.
+            pop_send_buffer_head(self.sendBuffer, self.env)
 
     def timeToSend(self, linkedSat):
         distance = linkedSat[0]
@@ -9732,8 +9791,28 @@ def RunSimulation(GTs, inputPath, outputPath, populationData, radioKM):
 
 
 if __name__ == '__main__':
-    os.makedirs(outputPath, exist_ok=True) 
+    os.makedirs(outputPath, exist_ok=True)
     sys.stdout = Logger(outputPath + 'logfile.log')
 
-    RunSimulation(GTs, './', outputPath, populationMap, radioKM=rKM)
-    # cProfile.run("RunSimulation(GTs, './', outputPath, populationMap, radioKM=rKM)")
+    try:
+        RunSimulation(
+            GTs, './', outputPath,
+            populationMap, radioKM=rKM
+        )
+    finally:
+        if rigoletto_online_trainer is not None:
+            trainer = rigoletto_online_trainer
+
+            try:
+                if (
+                    trainer.online_training_enabled
+                    and trainer.train_calls > 0
+                    and (
+                        trainer.last_checkpoint_path is None
+                        or trainer.train_calls
+                        % trainer.checkpoint_every != 0
+                    )
+                ):
+                    trainer._save_checkpoint_and_progress()
+            finally:
+                trainer.close()

@@ -231,3 +231,22 @@ __pycache__/
 *.pyc
 *.jsonl
 .venv/
+
+# RIGOLETTO LOCAL ARTIFACTS
+/MA_DRL_Simulator/Results/
+/MA_DRL_Simulator/*.log
+/MA_DRL_Simulator/*.log.gz
+/MA_DRL_Simulator/*.bak
+/MA_DRL_Simulator/*backup*.py
+/MA_DRL_Simulator/*backup*.csv
+
+/rl4cc_online_runs/
+/rl4cc_scratch_checkpoints/
+/rl4cc_scratch_online_checkpoints/
+
+__pycache__/
+*.pyc
+.DS_Store
+
+/rl4cc_windows_checkpoints/
+/rl4cc_online_checkpoints/
